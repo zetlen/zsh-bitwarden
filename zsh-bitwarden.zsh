@@ -157,7 +157,7 @@ bw_search() {
   _bw_table $@ <<< $items \
     | _bw_select ${visible[@]} \
     | cut -f$(IFS=, ; echo "${out[*]}") \
-    | sed -z '$ s/\n$//'
+    | sed '$ s/\n$//'
 }
 
 bw_unlock() {
