@@ -335,3 +335,5 @@ alias bwfle='bw_edit_field'
 alias bwg='bw generate'
 alias bwlc='bw_create_login'
 alias bwlc='bw_create_note'
+
+eval "$(bw completion --shell zsh); compdef _bw bw;"
