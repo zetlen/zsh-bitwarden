@@ -336,4 +336,9 @@ alias bwg='bw generate'
 alias bwlc='bw_create_login'
 alias bwlc='bw_create_note'
 
+function bp {
+  bw_unlock && bw get password "$1" | pbcopy
+}
+
+
 eval "$(bw completion --shell zsh); compdef _bw bw;"
