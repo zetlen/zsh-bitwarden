@@ -337,7 +337,7 @@ alias bwlc='bw_create_login'
 alias bwlc='bw_create_note'
 
 function bp {
-  bw_unlock && bw get password "$1" | clipcopy
+  bw_unlock && bw_password | clipcopy && echo Copied to clipboard.
 }
 
 
