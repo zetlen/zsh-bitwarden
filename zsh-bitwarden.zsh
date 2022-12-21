@@ -337,8 +337,9 @@ alias bwlc='bw_create_login'
 alias bwlc='bw_create_note'
 
 function bp {
-  bw_unlock && bw_password | clipcopy && echo Copied to clipboard.
+  FORCE_COLOR=1 bw_unlock && bw_password | clipcopy && echo Copied to clipboard.
 }
 
-
-eval "$(bw completion --shell zsh); compdef _bw bw;"
+function bp_add_completions {
+  eval "$(bw completion --shell zsh); compdef _bw bw;"
+}
