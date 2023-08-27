@@ -21,6 +21,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+
+_bw_fail_sentinel='__BW_NOPE__'
+
 _bw_get_alias() {
   local found_alias=$(alias | grep -E "=\W*$1\W*$" | cut -d'=' -f1)
   if [ -z $found_alias ]; then
@@ -79,10 +82,10 @@ _bw_select() {
   local cols=$(IFS=, ; echo "$@")
   # Printable table with index field
   local tbl=$(cut -d $'\t' -f "$cols" <<< $tsv | column -t -s $'\t' | nl -n rz)
-  local row=$(fzf -d $'\t' --with-nth 2 --select-1 --header-lines=1 <<< $tbl\
+  local row=$((fzf -d $'\t' --with-nth 2 --select-1 --header-lines=1 || echo $_bw_fail_sentinel) <<< $tbl\
     | awk '{print $1}')
-  if [[ "$?" -ne 0 ]]; then
-    echo "Couldn't return value from fzf. Is the header line missing?" >&2
+  if [[ "$?" -ne 0 ]] || [[ "$row" == "$_bw_fail_sentinel" ]]; then
+    echo $_bw_fail_sentinel
     return 2
   fi
   sed -n "${row}p" <<< $tsv
@@ -154,9 +157,9 @@ bw_search() {
     echo "No results. Try '-s .' to search through all items." >&2
     return 4
   fi
-  _bw_table $@ <<< $items \
-    | _bw_select ${visible[@]} \
-    | cut -f$(IFS=, ; echo "${out[*]}") \
+  local intermediate_result="$(_bw_table $@ <<< $items | _bw_select ${visible[@]})"
+  [[ "$intermediate_result" == "$_bw_fail_sentinel" ]] && return 2
+  echo "$intermediate_result" | cut -f$(IFS=, ; echo "${out[*]}") \
     | sed '$ s/\n$//'
 }
 
@@ -337,7 +340,12 @@ alias bwlc='bw_create_login'
 alias bwlc='bw_create_note'
 
 function bp {
-  FORCE_COLOR=1 bw_unlock && bw_password | clipcopy && echo Copied to clipboard.
+  local result="$(FORCE_COLOR=1 bw_unlock && bw_password "$*")"
+  if [ -n "$result" ]; then
+    echo "$result" | tr -d '[:space:]' | clipcopy && echo "🔑 Copied to clipboard."
+  else 
+    echo "🔐 Canceled."
+  fi
 }
 
 function bp_add_completions {
