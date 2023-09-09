@@ -340,7 +340,12 @@ alias bwlc='bw_create_login'
 alias bwlc='bw_create_note'
 
 function bp {
-  local result="$(FORCE_COLOR=1 bw_unlock && bw_password "$*")"
+  export FORCE_COLOR=1
+  if ! bw_unlock; then
+    echo "🔐 Canceled."
+    return 1
+  fi
+  local result="$(bw_password "$*")"
   if [ -n "$result" ]; then
     echo "$result" | tr -d '[:space:]' | clipcopy && echo "🔑 Copied to clipboard."
   else 
