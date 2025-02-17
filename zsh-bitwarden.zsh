@@ -340,7 +340,8 @@ alias bwlc='bw_create_login'
 alias bwlc='bw_create_note'
 
 function bp {
-  export FORCE_COLOR=1
+  FORCE_COLOR=1
+  NODE_OPTIONS="${NODE_OPTIONS} --disable-warning=DEP0040"
   if ! bw_unlock; then
     echo "🔐 Canceled."
     return 1
