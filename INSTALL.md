@@ -13,6 +13,12 @@ The following should be installed and on your PATH
 
 5. [gpg](https://gnupg.org) with a key of your own, for storing the master password
 
+These are needed only by the commands that use them:
+
+- [tree](https://oldmanprogrammer.net/source.php?dir=projects/tree) for `bw_path` listings
+- [qrencode](https://fukuchi.org/works/qrencode/) for `bw_path -q`
+- nmcli, from NetworkManager, for `bw_connect_wifi`
+
 # Installation
 
 ## Oh My Zsh
