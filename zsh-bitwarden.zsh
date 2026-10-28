@@ -360,9 +360,11 @@ bw_request() {
   local method=$1 endpoint=$2 res
   local -a data_args
   local params=$(bw_request_params "${@:3}")
-  # if ! [[ -t 0 ]]; then
+  # The body is read from stdin rather than passed as an argument, because
+  # arguments are visible to every local user and the unlock body holds the
+  # master password.
   if [[ ${#stdinarg[@]} -ne 0 ]]; then
-    data_args+=("-d" "$(</dev/stdin)")
+    data_args+=(--data-binary @-)
   fi
 
   local serve_port=${BW_SERVE_PORT:-8087}
