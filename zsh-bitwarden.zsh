@@ -595,9 +595,9 @@ bw_list() {
   local items
   items=$(bw_list_cache) || return $?
   for (( i = 2; i <= ${#sarg[@]}; i+=2)); do
-    items=$(printf "%s" "$items" | jq -ceM "[.[] | select(
+    items=$(printf "%s" "$items" | jq -ceM --arg re "${sarg[$i]}" "[.[] | select(
    reduce [ .id, .name, .notes, .login.username, .login.password, (.fields[]?.value) ][] as \$field
-  (false; . or (\$field // \"\" | test(\"${sarg[$i]}\";\"i\")))
+  (false; . or (\$field // \"\" | test(\$re;\"i\")))
     )]") || return $?
   done
   for (( i = 1; i <= ${#sxarg[@]}; i+=2)); do
@@ -616,7 +616,7 @@ bw_list() {
         jqpath=".notes"
         ;;
     esac
-    items=$(printf "%s" "$items" | jq -ceM "[.[] | select($jqpath | test(\"${sxarg[(( $i + 1 ))]}\";\"i\")?)]") || return $?
+    items=$(printf "%s" "$items" | jq -ceM --arg re "${sxarg[(( $i + 1 ))]}" "[.[] | select($jqpath | test(\$re;\"i\")?)]") || return $?
   done
   # local items=$(bw list items --search "${sarg[-1]}")
   if (( ${#larg[@]} || ${#narg[@]})); then
