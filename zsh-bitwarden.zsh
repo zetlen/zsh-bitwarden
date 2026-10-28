@@ -453,7 +453,7 @@ bw_encrypt() {
   else
     args=("--recipient" "${BW_GPG_KEY}")
   fi
-  gpg --quiet --batch --yes "${args[@]}" --encrypt -o "$@"
+  (umask 077; gpg --quiet --batch --yes "${args[@]}" --encrypt -o "$@")
 }
 
 bw_decrypt() {
