@@ -446,13 +446,6 @@ bw_serve() {
   fi
 }
 
-zsh_bw_init() {
-  if [ ! -z BW_INIT ]; then
-    return
-  fi
-  export BW_INIT="1"
-}
-
 bw_encrypt() {
   local -a args
   if [ -z "${BW_GPG_KEY}" ]; then
