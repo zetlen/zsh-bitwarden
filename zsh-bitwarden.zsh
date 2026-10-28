@@ -1376,7 +1376,7 @@ bw_path() {
 # compdef exists only after compinit has run.
 (( $+functions[compdef] )) && compdef _bw_path bw_path
 
-alias bwjs='bw_unlock && bw_tsv -p -r -O . -c .name "$@"'
+alias bwjs='bw_unlock && bw_tsv -p -r -O . -c .name'
 alias bwjse='bw_json_edit'
 alias bwls='bw_list'
 alias bwtsv='bw_tsv'
