@@ -48,12 +48,10 @@ _bw_test_subshell() {
   fi
 }
 
-bw_escape_jq() {
-  sed -e 's/\t/\\t/g' -e 's/\n/\\n/g' -e 's/\r/\\r/g'
-}
-
-bw_raw_jq() {
-  sed -e 's/\\t/\t/g' -e 's/\\n/\n/g' -e 's/\\r/\r/g' -e 's/\\\\/\\/g'
+# Quotes a value as a jq string literal. Values spliced into a jq program
+# without it break the program, or run as jq code, when they contain " or \.
+_bw_jq_str() {
+  jq -n --arg s "$1" '$s'
 }
 
 export BW_DEFAULT_HEADERS="${0:h}/default-headers.csv"
@@ -811,7 +809,7 @@ bw_field() {
     item=$(printf "%s" "$items" | bw_tsv \
                                    -r -O . \
                                    -c .name \
-                                   -h "$name" -c ".fields[\"$name\"] | select(length > 0) | join(\", \")" "$@") || return $?
+                                   -h "$name" -c ".fields[$(_bw_jq_str "$name")] | select(length > 0) | join(\", \")" "$@") || return $?
   else
     item=$(printf "%s" "$items" | bw_tsv \
                                    -r -O . \
@@ -823,7 +821,7 @@ bw_field() {
                                  -h value -c '.value | join(", ")') || return $?
   fi
 
-  res=$(printf "%s" "$item" | jq -ceM ".fields[\"$name\"]" | bw_search -h "$name" -o .; _bw_pipefail ${pipestatus[@]}) || return $?
+  res=$(printf "%s" "$item" | jq -ceM ".fields[$(_bw_jq_str "$name")]" | bw_search -h "$name" -o .; _bw_pipefail ${pipestatus[@]}) || return $?
 
   if (( ${#parg[@]} )); then
     printf "%s" "$res"
@@ -855,7 +853,7 @@ bw_edit_item() {
 
 bw_edit_item_assign() {
 
-  bw_edit_item "$1" "$2 = \"$3\""
+  bw_edit_item "$1" "$2 = $(_bw_jq_str "$3")"
 
 }
 
@@ -892,7 +890,7 @@ bw_edit_field() {
     item=$(printf "%s" "$items" | bw_tsv -p \
                                    -r -O . \
                                    -c .name \
-                                   -h "$name" -c ".fields[\"$name\"] | select(length > 0) | join(\", \")" "$@") || return $?
+                                   -h "$name" -c ".fields[$(_bw_jq_str "$name")] | select(length > 0) | join(\", \")" "$@") || return $?
   else
     item=$(printf "%s" "$items" | bw_tsv -p \
                                          -r -O . \
@@ -933,7 +931,7 @@ bw_edit_field() {
     fi
   fi
 
-  printf "%s" "$item" | jq -ceM ". | .fields.${name}+=[\"$val\"]" | bw_unsimplify | bw_edit_json
+  printf "%s" "$item" | jq -ceM --arg name "$name" --arg val "$val" '.fields[$name] += [$val]' | bw_unsimplify | bw_edit_json
 
   _bw_pipefail ${pipestatus[@]}
 
@@ -956,7 +954,7 @@ bw_add_field() {
     name=$(printf "%s" "$items" | bw_select_field) || return $?
   fi
   # local path_val="[(.fields[] | select(.name == \"$name\") | .value) // \"\"] | first"
-  local path_val="[(.fields[] | select(.name == \"$name\") | .value)?] | join(\", \")"
+  local path_val="[(.fields[] | select(.name == $(_bw_jq_str "$name")) | .value)?] | join(\", \")"
   res=("${(@ps:\x1f:)$(printf "%s" "$items" | bw_search \
                                  -r -O . \
                                  -O .id -c .name \
@@ -972,7 +970,7 @@ bw_add_field() {
   else
     val=$(</dev/stdin)
   fi
-  local field_json="{\"name\": \"$name\", \"value\": \"$val\"}"
+  local field_json=$(jq -cn --arg name "$name" --arg value "$val" '{name: $name, value: $value, type: 0, linkedId: null}')
   printf "%s" "$item" | bw_edit_item_append "$uuid" ".fields" "$field_json"
 }
 
@@ -995,12 +993,10 @@ bw_edit_name() {
   item="${res[1]}" val="${res[2]}" uuid="${res[3]}"
   # printf "%s" "$res" | bw_read_results item val uuid || return $?
   if [[ -t 0 ]]; then
-    val=$(printf "%s" "$val" | bw_raw_jq)
     vared -p "Edit name: " val
   else
     val=$(</dev/stdin)
   fi
-  val=$(printf "%s" "$val" | bw_escape_jq)
   printf "%s" "$item" | bw_edit_item_assign "$uuid" ".name" "$val"
   _bw_pipefail ${pipestatus[@]}
 }
@@ -1040,12 +1036,10 @@ bw_edit_username() {
   # printf "%s" "$res" | bw_read_results item val uuid || return $?
   item="${res[1]}" val="${res[2]}" uuid="${res[3]}"
   if [[ -t 0 ]]; then
-    val=$(printf "%s" "$val" | bw_raw_jq)
     vared -p "Edit username: " val
   else
     val=$(</dev/stdin)
   fi
-  val=$(printf "%s" "$val" | bw_escape_jq)
   printf "%s" "$item" | bw_edit_item_assign "$uuid" .login.username "$val"
   _bw_pipefail ${pipestatus[@]}
 }
@@ -1071,7 +1065,6 @@ bw_edit_password() {
   # printf "%s" "$res" | bw_read_results item val uuid || return $?
   item="${res[1]}" uuid="${res[2]}" val="${res[3]}"
   if [[ -t 0 ]]; then
-    val=$(printf "%s" "$val" | bw_raw_jq)
     echo -n "Enter password: " >&2
     read -s val
     echo
@@ -1087,7 +1080,6 @@ bw_edit_password() {
   else
     val=$(</dev/stdin)
   fi
-  val=$(printf "%s" "$val" | bw_escape_jq)
   printf "%s" "$item" | bw_edit_item_assign "$uuid" .login.password "$val"
   _bw_pipefail ${pipestatus[@]}
 }
@@ -1108,12 +1100,10 @@ bw_edit_note() {
   # printf "%s" "$res" | bw_read_results item val uuid || return $?
   item="${res[1]}" val="${res[2]}" uuid="${res[3]}"
   if [[ -t 0 ]]; then
-    val=$(printf "%s" "$val" | bw_raw_jq)
     vared -p $'Edit note |\n-----------\n' val
   else
     val=$(</dev/stdin)
   fi
-  val=$(printf "%s" "$val" | bw_escape_jq)
   printf "%s" "$item" | bw_edit_item_assign "$uuid" .notes "$val"
   _bw_pipefail ${pipestatus[@]}
 }
@@ -1129,19 +1119,15 @@ bw_create_login() {
 
   local name username uuid
   if (( ${#narg[@]})); then
-    name=$(printf "%s" "$name" | bw_raw_jq)
     name="${narg[-1]}"
   else
     vared -p "Login item name: " name
   fi
-  name=$(printf "%s" "$name" | bw_escape_jq)
   if (( ${#uarg[@]})); then
     username="${uarg[-1]}"
   else
-    username=$(printf "%s" "$username" | bw_raw_jq)
     vared -p "Login item username: " username
   fi
-  username=$(printf "%s" "$username" | bw_escape_jq)
   local pass
   if [ -t 0 ] ; then
     pass="$(bw_generate -ulns --length 21)"
@@ -1149,13 +1135,13 @@ bw_create_login() {
   else
     pass="$(</dev/stdin)"
   fi
-  val=$(printf "%s" "$val" | bw_escape_jq)
   # bw_reset_cache_list
   # bw_template \
   #   | jq -ceM ".name=\"${name}\" | .login.username=\"$username\" | .login.password=\"$pass\"" \
   #   | bw encode | bw create item | jq -rceM '.login.password'
   bw_template \
-      | jq -ceM ".name=\"${name}\" | .login.username=\"$username\" | .login.password=\"$pass\"" \
+      | jq -ceM --arg name "$name" --arg username "$username" --arg pass "$pass" \
+           '.name = $name | .notes = null | .login.username = $username | .login.password = $pass' \
       | bw_request --stdin POST "/object/item" | jq -rceM '.login.password'
   _bw_pipefail ${pipestatus[@]}
 }
@@ -1172,23 +1158,20 @@ bw_create_note() {
   if (( ${#narg[@]})); then
     name="${narg[-1]}"
   else
-    name=$(printf "%s" "$name" | bw_raw_jq)
     vared -p "Note item name: " name
   fi
-  name=$(printf "%s" "$name" | bw_escape_jq)
   if [[ -t 0 ]]; then
-    val=$(printf "%s" "$val" | bw_raw_jq)
     vared -p $'Enter note |\n-----------\n' val
   else
     val=$(</dev/stdin)
   fi
-  val=$(printf "%s" "$val" | bw_escape_jq)
   # bw_reset_cache_list
   # uuid=$(bw_template \
   #          | jq ".name=\"${name}\" | .notes=\"${val}\" | .type=2 | .secureNote.type = 0" \
   #          | bw encode | bw create item | jq -r '.id')
   uuid=$(bw_template \
-             | jq ".name=\"${name}\" | .notes=\"${val}\" | .type=2 | .secureNote.type = 0" \
+             | jq --arg name "$name" --arg notes "$val" \
+                  '.name = $name | .notes = $notes | .type = 2 | .secureNote.type = 0' \
              | bw_request --stdin POST /object/item | jq -r '.id'; _bw_pipefail ${pipestatus[@]})
 }
 
