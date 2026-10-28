@@ -466,14 +466,14 @@ bw_decrypt() {
 }
 
 bw_unlock_password() {
-  if [ ! -f ${gpg_file} ]; then
+  if [ ! -f "$1" ]; then
     return 1
   fi
   local pass
-  if ! pass=$(bw_decrypt $1); then
+  if ! pass=$(bw_decrypt "$1"); then
     return 1
   fi
-  printf "%s" "$pass" | awk '{print "{\"password\":\"" $0 "\"}"}' | bw_request_path --stdin -r POST /unlock .title >&2
+  jq -n --arg password "$pass" '{password: $password}' | bw_request_path --stdin -r POST /unlock .title >&2
 }
 
 bw_unlock() {
