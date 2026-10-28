@@ -757,11 +757,16 @@ bw_user_pass() {
   read _ && printf "%s" "$pass" | clipcopy
 }
 
+# Prints the selected value, or the typed query when nothing matches it or when
+# alt-enter is pressed, so a new value can be entered as well as an existing one
+# chosen. fzf exits 1 when nothing matches, which is not a failure here.
 bw_select_values() {
   jq -rceM "[.[] | $1] | unique | .[]" \
-    | fzf --header="$2" --print-query \
-    | awk 'NR == 1 && $0 != "" { print $0; exit } NR == 2 { print $0; exit }'
-  _bw_pipefail ${pipestatus[@]}
+    | fzf --header="$2 (alt-enter: use typed text)" --print-query --bind 'alt-enter:print-query' \
+    | awk 'NR == 1 { q = $0 } NR == 2 { s = $0 } END { if (s != "") print s; else if (q != "") print q; else exit 1 }'
+  local -a st=("${pipestatus[@]}")
+  (( st[2] == 1 )) && st[2]=0
+  _bw_pipefail "${st[@]}"
 }
 
 bw_select_field() {
