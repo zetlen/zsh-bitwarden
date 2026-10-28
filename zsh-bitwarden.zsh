@@ -796,7 +796,7 @@ bw_field() {
              -choose=choosearg || return
 
   local items
-  items=$(bw_tsv -p --items-only  --simplify "$@") || return $?
+  items=$(bw_list --simplify "$@") || return $?
 
   local res item name
 
@@ -875,7 +875,7 @@ bw_edit_field() {
   bw_unlock || return $?
 
   local items
-  items=$(bw_tsv -p --items-only  --simplify "$@") || return $?
+  items=$(bw_list --simplify "$@") || return $?
 
   local -a res
   local item
@@ -902,18 +902,17 @@ bw_edit_field() {
                                  -h value -c '.value | join(", ")') || return $?
   fi
 
-  local item uuid idx value
+  local uuid idx val
   uuid=$(printf "%s" "$item" | jq -rceM ".id")
 
-  res=("${(@ps:\x1f:)$(printf "%s" "$item" | jq -ceM ".fields[\"$name\"] | to_entries" | bw_search -O .key -h "$name" -o .value)}") || return $?
+  res=("${(@ps:\x1f:)$(printf "%s" "$item" | jq -ceM ".fields[$(_bw_jq_str "$name")] | to_entries" | bw_search -O .key -h "$name" -o .value)}") || return $?
 
-  # printf "%s" "$res" | bw_read_results idx val || return $?
   idx="${res[1]}" val="${res[2]}"
 
-  item=$(printf "%s" "$item" | jq -ceM ". | del(.fields.${name}[$idx])")
+  item=$(printf "%s" "$item" | jq -ceM --arg name "$name" --argjson idx "$idx" 'del(.fields[$name][$idx])')
 
   if (( ${#darg[@]})); then
-    printf "%s" "$item" | bw_edit_item "$uuid" "del(.fields[$idx])"
+    printf "%s" "$item" | bw_unsimplify | bw_edit_json
     _bw_pipefail ${pipestatus[@]}
     return $?
   fi
