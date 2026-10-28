@@ -555,7 +555,7 @@ bw_unsimplify() {
   name: .name,
   notes: .notes,
   fields: [
-    .fields | to_entries[] |
+    .fields // {} | to_entries[] |
     .value[] as $v |
     {name: .key, value: $v, type: 0, linkedId: null}
   ],
@@ -564,13 +564,27 @@ bw_unsimplify() {
     password: .password
   }
   }') || return $?
-  uuid=$(printf "%s" "$item" | jq -rceM ".id") || return $?
+  uuid=$(printf "%s" "$item" | jq -rcM ".id") || return $?
   if [[ "$uuid" == "null" ]]; then
     old_item=$(bw_template) || return $?
   else
     old_item=$(bw_list_cache | bw_get_item "$uuid") || return $?
   fi
-  printf "%s" "$old_item $item" | jq -ceMs ".[0] * .[1]" || return $?
+  # The simplified form keeps only field names and values, so each field takes
+  # its type (hidden, boolean, linked) back from the stored field of the same
+  # name; otherwise every hidden field would be saved as plain text.
+  printf "%s" "$old_item $item" | jq -ceMs '
+    .[0] as $old
+    | .[1]
+    | .fields |= map(
+        . as $f
+        | ([$old.fields[]? | select(.name == $f.name)] | first) as $o
+        | .type = ($o.type // 0)
+        | .linkedId = ($o.linkedId // null)
+      )
+    | if ($old.type // 1) == 1 then . else del(.login) end
+    | $old * .
+  ' || return $?
 }
 
 bw_list() {
@@ -838,7 +852,7 @@ bw_get_item() {
 bw_edit_json() {
   local item=$(</dev/stdin)
   local uuid
-  uuid=$(printf "%s" "$item" | jq -rceM ".id") || return $?
+  uuid=$(printf "%s" "$item" | jq -rcM ".id") || return $?
   if [[ "$uuid" == "null" ]]; then
     printf "%s" "$item" | bw_request --stdin POST /object/item
   else
