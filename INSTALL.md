@@ -9,6 +9,10 @@ The following should be installed and on your PATH
 
 3. [fzf](https://github.com/junegunn/fzf) for selecting from multiple items
 
+4. [curl](https://curl.se) for talking to `bw serve`
+
+5. [gpg](https://gnupg.org) with a key of your own, for storing the master password
+
 # Installation
 
 ## Oh My Zsh
