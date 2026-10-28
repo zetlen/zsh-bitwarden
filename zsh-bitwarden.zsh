@@ -442,9 +442,10 @@ bw_serve() {
   if ! pgrep -f '(^|/)bw serve' > /dev/null 2>&1; then
     bw serve --port ${serve_port} > /dev/null 2> /dev/null &!
     # An unlocked server holds about 190 MB and answers any local process without
-    # authentication, so it must not outlive the session that started it.
+    # authentication, so it gets a fixed lifetime. The timer must not hold the
+    # caller's output open, or a $(...) that started the server waits it out.
     local pid=$!
-    { sleep ${BW_SERVE_LIFETIME:-1800}; kill $pid 2> /dev/null } &!
+    { sleep ${BW_SERVE_LIFETIME:-1800}; kill $pid } > /dev/null 2>&1 &!
     bw_wait_port ${serve_port} 5
   fi
 }
