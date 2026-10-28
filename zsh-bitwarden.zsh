@@ -490,6 +490,7 @@ bw_unlock() {
     if ! read -s pass; then
       return 1
     fi
+    echo >&2
     if ! printf "%s" "$pass" | bw_encrypt ${gpg_file}; then
       return 1
     fi
@@ -1087,11 +1088,11 @@ bw_edit_password() {
   if [[ -t 0 ]]; then
     echo -n "Enter password: " >&2
     read -s val
-    echo
+    echo >&2
     local dup
     echo -n "Enter password again: " >&2
     read -s dup
-    echo
+    echo >&2
     if [[ "$val" != "$dup" ]]; then
       echo "Passwords don't match" >&2
       return 1
