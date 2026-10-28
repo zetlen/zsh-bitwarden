@@ -431,7 +431,7 @@ bw_wait_port() {
   local port limit
   port=$1
   limit=$2
-  while ! nc -z localhost $port && [[ $limit -ne 0 ]]; do
+  while ! curl -s -o /dev/null localhost:$port && [[ $limit -ne 0 ]]; do
         sleep 1
         limit=$((limit-1))
   done
