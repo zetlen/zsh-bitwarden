@@ -618,8 +618,8 @@ bw_list() {
       "--search-pass")
         jqpath=".login.password"
         ;;
-      "--search-notes")
-        jqpath=".login.notes"
+      "--search-note")
+        jqpath=".notes"
         ;;
     esac
     items=$(printf "%s" "$items" | jq -ceM "[.[] | select($jqpath | test(\"${sxarg[(( $i + 1 ))]}\";\"i\")?)]") || return $?
