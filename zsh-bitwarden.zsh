@@ -702,10 +702,10 @@ bw_tsv() {
   fi
 
   if [[ ${#targ[@]} -ne 0 ]]; then
-    IFS='' res=$(printf "%s" "$items" | bw_table "${bw_table_args[@]}" "$@") || return $?
+    res=$(printf "%s" "$items" | bw_table "${bw_table_args[@]}" "$@") || return $?
   else
     local -a bw_search_args
-    IFS='' res=$(printf "%s" "$items" | bw_search "${bw_table_args[@]}" "${bw_search_args[@]}" "$@") || return $?
+    res=$(printf "%s" "$items" | bw_search "${bw_table_args[@]}" "${bw_search_args[@]}" "$@") || return $?
 
   fi
   if [[ ${#parg[@]} -ne 0 ]]; then
@@ -735,8 +735,7 @@ bw_connect_wifi() {
   local ssids jqfilter
   ssids=$(nmcli device wifi list | grep -v 'SSID' | grep -v '|' | awk '{print $2}' | paste -sd'|')
   items=$(bw_list -l "$@" | jq -ceM "[.[] | select((.login.username | test(\"^($ssids)\$\"))?)]")
-  IFS=$'\x1F' res=($(printf "%s" "$items" | bw_search -c .name -o .login.username -O .login.password))
-  _bw_pipefail ${pipestatus[@]} || return $?
+  res=("${(@ps:\x1f:)$(printf "%s" "$items" | bw_search -c .name -o .login.username -O .login.password)}") || return $?
   user="${res[1]}" pass="${res[2]}"
   printf "%s" "$pass" | nmcli --ask c up "$user"
 }
@@ -748,13 +747,9 @@ bw_user_pass() {
 
   local user pass
   local -a res
-  IFS=$'\x1F' res=($(bw_list -l "$@" | bw_search -c .name -o .login.username -O .login.password))
-  _bw_pipefail ${pipestatus[@]}
+  res=("${(@ps:\x1f:)$(bw_list -l "$@" | bw_search -c .name -o .login.username -O .login.password)}") || return 2
   user="${res[1]}" pass="${res[2]}"
 
-  if [[ "$?" -ne 0 ]]; then
-    return 2
-  fi
   echo -n "Hit enter to copy username..."
   read _ && printf "%s" "$user" | clipcopy
   echo -n "Hit enter to copy password..."
@@ -924,8 +919,7 @@ bw_edit_field() {
   local item uuid idx value
   uuid=$(printf "%s" "$item" | jq -rceM ".id")
 
-  IFS=$'\x1F' res=($(printf "%s" "$item" | jq -ceM ".fields[\"$name\"] | to_entries" | bw_search -O .key -h "$name" -o .value))
-  _bw_pipefail ${pipestatus[@]}
+  res=("${(@ps:\x1f:)$(printf "%s" "$item" | jq -ceM ".fields[\"$name\"] | to_entries" | bw_search -O .key -h "$name" -o .value)}") || return $?
 
   # printf "%s" "$res" | bw_read_results idx val || return $?
   idx="${res[1]}" val="${res[2]}"
@@ -975,10 +969,10 @@ bw_add_field() {
   fi
   # local path_val="[(.fields[] | select(.name == \"$name\") | .value) // \"\"] | first"
   local path_val="[(.fields[] | select(.name == \"$name\") | .value)?] | join(\", \")"
-  IFS=$'\x1F' res=($(printf "%s" "$items" | bw_search \
+  res=("${(@ps:\x1f:)$(printf "%s" "$items" | bw_search \
                                  -r -O . \
                                  -O .id -c .name \
-                                 -h "$name" -o "$path_val")) || return $?
+                                 -h "$name" -o "$path_val")}") || return $?
   if [[ $? -ne 0 ]]; then
     echo "Couldn't find items with search args $@" >&2
     return 1
@@ -1000,11 +994,11 @@ bw_edit_name() {
 
   local items item uuid val res
   items=$(bw_list -l "$@") || return $?
-  IFS=$'\x1F' res=($(printf "%s" "$items" | bw_search \
+  res=("${(@ps:\x1f:)$(printf "%s" "$items" | bw_search \
                                  -r -O . \
                                  -o .name \
                                  -c .login.username \
-                                 -O .id)) || return $?
+                                 -O .id)}") || return $?
   if [[ $? -ne 0 ]]; then
     echo "Couldn't find items with search strings $@" >&2
     return 1
@@ -1046,11 +1040,11 @@ bw_edit_username() {
   local -a res
   local items item uuid val
   items=$(bw_list -l "$@") || return $?
-  IFS=$'\x1F' res=($(printf "%s" "$items" | bw_search \
+  res=("${(@ps:\x1f:)$(printf "%s" "$items" | bw_search \
                                  -r -O . \
                                  -c .name \
                                  -o .login.username \
-                                 -O .id)) || return $?
+                                 -O .id)}") || return $?
   if [[ $? -ne 0 ]]; then
     echo "Couldn't find items with search args $@" >&2
     return 1
@@ -1077,11 +1071,11 @@ bw_edit_password() {
 
   items=$(bw_list -l "$@") || return $?
 
-  IFS=$'\x1F' res=($(printf "%s" "$items" | bw_search \
+  res=("${(@ps:\x1f:)$(printf "%s" "$items" | bw_search \
                                  -r -O . \
                                  -c .name \
                                  -c .login.username \
-                                 -O .id -O .login.password)) || return $?
+                                 -O .id -O .login.password)}") || return $?
   if [[ $? -ne 0 ]]; then
     echo "Couldn't find items with search args $@" >&2
     return 1
@@ -1118,10 +1112,10 @@ bw_edit_note() {
   local items uuid val
 
   items=$(bw_list -n "$@") || return $?
-  IFS=$'\x1F' res=($(printf "%s" "$items" | bw_search \
+  res=("${(@ps:\x1f:)$(printf "%s" "$items" | bw_search \
                                  -r -O . \
                                  -c .name \
-                                 -o .notes -O .id)) || return $?
+                                 -o .notes -O .id)}") || return $?
 
   # printf "%s" "$res" | bw_read_results item val uuid || return $?
   item="${res[1]}" val="${res[2]}" uuid="${res[3]}"
