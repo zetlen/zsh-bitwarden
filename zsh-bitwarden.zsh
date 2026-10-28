@@ -735,9 +735,9 @@ bw_tsv() {
 bw_connect_wifi() {
   bw_unlock || return $?
   local -a res
-  local ssids jqfilter
-  ssids=$(nmcli device wifi list | grep -v 'SSID' | grep -v '|' | awk '{print $2}' | paste -sd'|')
-  items=$(bw_list -l "$@" | jq -ceM "[.[] | select((.login.username | test(\"^($ssids)\$\"))?)]")
+  local ssids items user pass
+  ssids=$(nmcli -t -e no -f SSID device wifi list) || return $?
+  items=$(bw_list -l "$@" | jq -ceM --arg ssids "$ssids" '($ssids | split("\n") - [""]) as $visible | [.[] | select(.login.username as $u | $visible | index([$u]))]') || return $?
   res=("${(@ps:\x1f:)$(printf "%s" "$items" | bw_search -c .name -o .login.username -O .login.password)}") || return $?
   user="${res[1]}" pass="${res[2]}"
   printf "%s" "$pass" | nmcli --ask c up "$user"
