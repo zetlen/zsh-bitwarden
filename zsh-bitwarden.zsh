@@ -522,7 +522,7 @@ bw_generate() {
   (( ${#narg[@]})) && param_list+=( "number" "true" )
   (( ${#lengtharg[@]})) && param_list+=( "length" "${lengtharg[-1]}" )
 
-  bw_request_path -rn GET "/generate$params" .data "${param_list[@]}"
+  bw_request_path -rn GET /generate .data "${param_list[@]}"
 }
 
 bw_template() {
