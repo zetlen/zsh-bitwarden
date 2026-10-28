@@ -750,7 +750,7 @@ bw_user_pass() {
 
   local user pass
   local -a res
-  res=("${(@ps:\x1f:)$(bw_list -l "$@" | bw_search -c .name -o .login.username -O .login.password)}") || return 2
+  res=("${(@ps:\x1f:)$(bw_list -l "$@" | bw_search -c .name -h username -o '.login.username // ""' -O .login.password)}") || return 2
   user="${res[1]}" pass="${res[2]}"
 
   echo -n "Hit enter to copy username..."
@@ -1003,7 +1003,7 @@ bw_edit_name() {
   res=("${(@ps:\x1f:)$(printf "%s" "$items" | bw_search \
                                  -r -O . \
                                  -o .name \
-                                 -c .login.username \
+                                 -h username -c '.login.username // ""' \
                                  -O .id)}") || return $?
   if [[ $? -ne 0 ]]; then
     echo "Couldn't find items with search strings $@" >&2
@@ -1047,7 +1047,7 @@ bw_edit_username() {
   res=("${(@ps:\x1f:)$(printf "%s" "$items" | bw_search \
                                  -r -O . \
                                  -c .name \
-                                 -o .login.username \
+                                 -h username -o '.login.username // ""' \
                                  -O .id)}") || return $?
   if [[ $? -ne 0 ]]; then
     echo "Couldn't find items with search args $@" >&2
@@ -1076,7 +1076,7 @@ bw_edit_password() {
   res=("${(@ps:\x1f:)$(printf "%s" "$items" | bw_search \
                                  -r -O . \
                                  -c .name \
-                                 -c .login.username \
+                                 -h username -c '.login.username // ""' \
                                  -O .id -O .login.password)}") || return $?
   if [[ $? -ne 0 ]]; then
     echo "Couldn't find items with search args $@" >&2
@@ -1384,7 +1384,7 @@ alias bwul='bw_unlock'
 alias bwlk='bw_lock'
 alias bwn='bw_tsv -o .name'
 alias bwus='bw_tsv -l -c .name -o .login.username'
-alias bwpw='bw_tsv -l -c .name -c .login.username -O .login.password'
+alias bwpw='bw_tsv -l -c .name -h username -c ".login.username // \"\"" -O .login.password'
 alias bwno='bw_tsv -n -c .name -o .notes'
 alias bwfl='bw_field'
 alias bwup='bw_user_pass'
@@ -1402,7 +1402,7 @@ alias bwnc='bw_create_note'
 bp() {
   local -a sarg
   (( $# )) && sarg=(-s "$*")
-  bw_tsv -l "${sarg[@]}" -c .name -c .login.username -O .login.password \
+  bw_tsv -l "${sarg[@]}" -c .name -h username -c '.login.username // ""' -O .login.password \
     && echo "Copied to clipboard." >&2
 }
 
