@@ -54,7 +54,7 @@ _bw_jq_str() {
   jq -n --arg s "$1" '$s'
 }
 
-export BW_DEFAULT_HEADERS="${0:h}/default-headers.csv"
+export BW_DEFAULT_HEADERS="${BW_DEFAULT_HEADERS:-${0:h}/default-headers.csv}"
 
 bw_default_header() {
   while IFS=$'\n' read -r line; do
