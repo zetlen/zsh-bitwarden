@@ -696,7 +696,7 @@ bw_tsv() {
     [[ ${#simplifyarg[@]} -ne 0 ]] && bw_list_args+=("${simplifyarg[@]}")
     [[ ${#larg[@]} -ne 0 ]] && bw_list_args+=("${larg[@]}")
     [[ ${#narg[@]} -ne 0 ]] && bw_list_args+=("${narg[@]}")
-    items=$(bw_list "${bw_list_args[@]}")
+    items=$(bw_list "${bw_list_args[@]}") || return $?
     if [[ ${#itemsonlyarg[@]} -ne 0 ]]; then
       printf "%s" "$items"
       return
