@@ -1195,14 +1195,22 @@ bw_init_file() {
   printf "%s" "$itemfile"
 }
 
-bw_edit_file() {
-  local modtime_before=$(stat -c %Y "$1")
-  $EDITOR "$1" || return $?
-  local modtime_after=$(stat -c %Y "$1")
-  if [[ "$modtime_before" -eq "$modtime_after" ]]; then
-    shred -u "$itemfile"
-    return 1
+# Removes a file that held decrypted vault data. macOS has no shred by default.
+_bw_rm_secret() {
+  if (( $+commands[shred] )); then
+    shred -u "$1"
+  else
+    rm -f "$1"
   fi
+}
+
+# Succeeds only when the editor changed the file. Comparing contents rather
+# than modification times works on every platform and catches saves made
+# within the same second.
+bw_edit_file() {
+  local before=$(<"$1")
+  ${=EDITOR:-vi} "$1" || return $?
+  [[ "$(<"$1")" != "$before" ]]
 }
 
 bw_json_edit() {
@@ -1217,19 +1225,19 @@ bw_json_edit() {
   if (( ${#narg[@]} )); then
     item=$(bw_template)
     if (( ${#simplifyarg[@]} )); then
-      item=$(printf "%s" "$item" | jq -ceM "[.]" | bw_simplify; _bw_pipefail ${pipestatus[@]}) || return $?
+      item=$(printf "%s" "$item" | jq -ceM "[.]" | bw_simplify | jq -ceM ".[0]"; _bw_pipefail ${pipestatus[@]}) || return $?
     fi
   else
     item=$(bw_tsv -p -r -O . -c .name "$@" "${simplifyarg[@]}") || return $?
   fi
   item=$(printf "%s" "$item" | jq -M)
   itemfile=$(printf "%s" "$item" | bw_init_file) || return $?
-  bw_edit_file "$itemfile" || return $?
-  if [[ $? -ne 0 ]]; then
-    return 1
-  fi
-  item=$(cat "$itemfile")
-  shred -u "$itemfile"
+  local edited
+  bw_edit_file "$itemfile"
+  edited=$?
+  item=$(<"$itemfile")
+  _bw_rm_secret "$itemfile"
+  (( edited == 0 )) || return $edited
   if (( ${#simplifyarg[@]} )); then
     item=$(printf "%s" "$item" | bw_unsimplify) || return $?
   fi
