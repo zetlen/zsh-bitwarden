@@ -453,12 +453,13 @@ zsh_bw_init() {
 }
 
 bw_encrypt() {
+  local -a args
   if [ -z "${BW_GPG_KEY}" ]; then
     args=("--default-recipient-self")
   else
     args=("--recipient" "${BW_GPG_KEY}")
   fi
-  gpg --quiet --batch --yes --default-recipient-self --encrypt -o $@
+  gpg --quiet --batch --yes "${args[@]}" --encrypt -o "$@"
 }
 
 bw_decrypt() {
