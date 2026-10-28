@@ -1261,8 +1261,8 @@ bw_path_candidates() {
 
   bw_unlock || return $?
 
-  prefix="$1"
-  jq_query='
+  local prefix="$1"
+  local jq_query='
   [
       $folders[].data[]
       | (
@@ -1365,7 +1365,7 @@ bw_path() {
     elif [[ ${#parg} -ne 0 ]]; then
       printf "%s" "$top" | clipcopy
       echo "Copied to clipboard. Will clear in 45 seconds"
-      { sleep 45 && printf '' | clipcopy 2>&1; } &!
+      { sleep 45 && printf '' | clipcopy } > /dev/null 2>&1 &!
     else
       printf "%s" "$top"
     fi
