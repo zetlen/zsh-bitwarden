@@ -172,13 +172,11 @@ _bw_select() {
   #   printf "%s" "$tsv" | cut -f1
   # )
 
-  local tbl=$(paste \
+  local tbl
+  tbl=$(paste \
         <(printf "%s" "$tsv" | cut -f1) \
         <(printf "%s" "$tsv" | cut -f2- | column -t -s $'\t') \
   )
-
-
-  _bw_pipefail ${pipestatus[@]}
 
   # Check if the table was generated correctly
   if [[ "$?" -ne 0 || -z "$tbl" ]]; then
@@ -190,10 +188,9 @@ _bw_select() {
   row=$( \
     printf "%s" "$tbl" \
     | fzf -d $'\t' --with-nth=2 --select-1 --header-lines=1 \
-    | awk '{print $1}' \
+    | awk '{print $1}'; \
+    _bw_pipefail ${pipestatus[@]} \
   )
-
-  _bw_pipefail ${pipestatus[@]}
 
   if [[ "$?" -ne 0 || -z "$row" ]]; then
     echo "Couldn't return value from fzf. Is the header line missing?" >&2
@@ -403,8 +400,7 @@ bw_request_path() {
 
   local method="$1" endpoint="$2" jqpath="$3" res exitcode
   local params_list=("${@:4}")
-  res=$(bw_request "${stdinarg[@]}" "$method" "$endpoint" "${params_list[@]}" | jq "${rarg[@]}" -ceM "$jqpath")
-  _bw_pipefail ${pipestatus[@]} || return $?
+  res=$(bw_request "${stdinarg[@]}" "$method" "$endpoint" "${params_list[@]}" | jq "${rarg[@]}" -ceM "$jqpath"; _bw_pipefail ${pipestatus[@]}) || return $?
   printf "%s" "$res"
   if [[ ${#narg[@]} -ne 0 ]];then
     echo
@@ -834,8 +830,7 @@ bw_field() {
                                  -h value -c '.value | join(", ")') || return $?
   fi
 
-  res=$(printf "%s" "$item" | jq -ceM ".fields[\"$name\"]" | bw_search -h "$name" -o .)
-  _bw_pipefail ${pipestatus[@]}
+  res=$(printf "%s" "$item" | jq -ceM ".fields[\"$name\"]" | bw_search -h "$name" -o .; _bw_pipefail ${pipestatus[@]}) || return $?
 
   if (( ${#parg[@]} )); then
     printf "%s" "$res"
@@ -1201,8 +1196,7 @@ bw_create_note() {
   #          | bw encode | bw create item | jq -r '.id')
   uuid=$(bw_template \
              | jq ".name=\"${name}\" | .notes=\"${val}\" | .type=2 | .secureNote.type = 0" \
-             | bw_request --stdin POST /object/item | jq -r '.id')
-  _bw_pipefail ${pipestatus[@]}
+             | bw_request --stdin POST /object/item | jq -r '.id'; _bw_pipefail ${pipestatus[@]})
 }
 
 bw_init_file() {
@@ -1234,8 +1228,7 @@ bw_json_edit() {
   if (( ${#narg[@]} )); then
     item=$(bw_template)
     if (( ${#simplifyarg[@]} )); then
-      item=$(printf "%s" "$item" | jq -ceM "[.]" | bw_simplify)
-      _bw_pipefail ${pipestatus[@]} || return $?
+      item=$(printf "%s" "$item" | jq -ceM "[.]" | bw_simplify; _bw_pipefail ${pipestatus[@]}) || return $?
     fi
   else
     item=$(bw_tsv -p -r -O . -c .name "$@" "${simplifyarg[@]}") || return $?
