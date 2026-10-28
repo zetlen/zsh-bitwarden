@@ -11,7 +11,7 @@ See [INSTALL.md](INSTALL.md).
 | Command    | Description                 |
 |------------|-----------------------------|
 | `bwul`     | unlock the vault            |
-| `bwlk`     | lock the vault              |
+| `bwlk`     | lock the vault, stop server |
 | `bwst`     | vault status                |
 | `bwsn`     | sync the vault              |
 | `bw_path`  | like `pass show`            |
@@ -39,6 +39,15 @@ See [INSTALL.md](INSTALL.md).
 | `bwnc`     | create note                 |
 
 `bp_add_completions` loads the completions for `bw` itself.
+
+## Unlocking
+
+The plugin talks to `bw serve` on `localhost:$BW_SERVE_PORT` (default 8087) and starts it when it is not running.
+The server answers any local process without authentication, so it stops after `$BW_SERVE_LIFETIME` seconds (default 1800) or when you run `bwlk`.
+
+The first unlock asks for your master password and stores it encrypted to your GPG key in `$BW_PASS_FILE` (default `~/.config/zsh-bitwarden/pass.gpg`).
+Later unlocks decrypt that file, so gpg-agent decides how often you are asked for a passphrase.
+Set `BW_GPG_KEY` to encrypt to a key other than your default one.
 
 ## Examples
 

@@ -439,8 +439,12 @@ bw_wait_port() {
 
 bw_serve() {
   local serve_port=${BW_SERVE_PORT:-8087}
-  if ! pgrep -af "bw serve" > /dev/null 2>&1; then
+  if ! pgrep -f '(^|/)bw serve' > /dev/null 2>&1; then
     bw serve --port ${serve_port} > /dev/null 2> /dev/null &!
+    # An unlocked server holds about 190 MB and answers any local process without
+    # authentication, so it must not outlive the session that started it.
+    local pid=$!
+    { sleep ${BW_SERVE_LIFETIME:-1800}; kill $pid 2> /dev/null } &!
     bw_wait_port ${serve_port} 5
   fi
 }
@@ -504,16 +508,9 @@ bw_unlock() {
 }
 
 bw_lock() {
-  bw_serve
-
-  local st res
-
-  if ! st=$(bw_status) 2> /dev/null; then
-    return
-  fi
-
-  bw_request_path -r POST /lock .title
-
+  # The server keeps the vault key only in memory, so stopping it locks the vault.
+  pkill -f '(^|/)bw serve'
+  echo "Your vault is locked."
 }
 
 bw_generate() {
