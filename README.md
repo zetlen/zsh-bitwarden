@@ -8,85 +8,115 @@ See [INSTALL.md](INSTALL.md).
 
 ## Usage
 
-- Use `bwul` to unlock the vault, setting the env variable $BW_SESSION.
-- Use `bwus SEARCH` to get a username
-- Use `bwuse SEARCH` to edit a username
-- Use `bwpw SEARCH` to get a password
-- Use `bwpwe SEARCH` to edit a password
-- Use `bwfl SEARCH FLDNAME` to get a field 
-- Use `bwfle SEARCH FLDNAME` to edit a field 
-- Use `bwno SEARCH` to get notes
-- Use `bwnoe SEARCH` to edit notes
-- Use `bwne SEARCH` to edit an item name
-- Use `bwup SEARCH` to copy username then password to clipboard
-- Use `bwse [OPTIONS]... JPATHS` to search
-- Use `bwlc [NAME] [USERNAME]` to create a login item
+| Command    | Description                 |
+|------------|-----------------------------|
+| `bwul`     | unlock the vault            |
+| `bwlk`     | lock the vault              |
+| `bwst`     | vault status                |
+| `bwsn`     | sync the vault              |
+| `bw_path`  | like `pass show`            |
+| `bwjs`     | print item json             |
+| `bwjse`    | edit item json in $EDITOR   |
+| `bwtsv -t` | print tsv table             |
+| `bwtsv`    | select tsv data             |
+| `bwg`      | alphanum + special password |
+| `bwgs`     | alphanum password           |
+| `bwus`     | get username                |
+| `bwuse`    | edit username               |
+| `bwpw`     | get password                |
+| `bp`       | search, then get password   |
+| `bwpwe`    | edit password               |
+| `bwfl`     | get field                   |
+| `bwfle`    | edit field                  |
+| `bwfle -r` | rename field                |
+| `bwfle -d` | delete field                |
+| `bwfla`    | add field                   |
+| `bwno`     | get note                    |
+| `bwnoe`    | edit note                   |
+| `bwne`     | edit item name              |
+| `bwup`     | copy username then password |
+| `bwlc`     | create login                |
+| `bwnc`     | create note                 |
+
+`bp_add_completions` loads the completions for `bw` itself.
 
 ## Examples
 
-`bwus` and `bwpw` both delegate to `bwse`. `bwse` searches over all items
-letting the user select one using `fzf`. Each item has a set of fields some of
-which are set to be visible in `fzf`, and some of these fields can be printed as
-output. If a single search result is found its fields are output without
-interactive selection.
-
-`bwus` executes `bwse -c coc -s ARGS .name .login.username .notes `. Here `-c
-COLS` determines columns that are displayed in `fzf` and those which are tab
-separated and included in output. `o` and `O` are output columns and are printed
-to stdout. `o` will appear in the `fzf` finder while `O` will be hidden. `c` is
-not returned in stdout and is only displayed in the `fzf` finder.
-
-If you wanted `bwpw` to display the item ids as well as the names you could
-define the function
-
-```
-bwpw() {
-  bw_unlock && bw_search -c cccOc -s "$*"\
-  .id .name .login.username .login.password .notes
-}
+```zsh
+# copy password to clipboard and include .notes column in finder
+bwpw .notes
+# create entry called `mylogin` with username `user123@example.com` and copy secure password to clipboard
+bwlc -n mylogin -u user123@example.com
+# rename to mynewlogin
+echo -n mynewlogin | bwne -s mylogin
+# get username and password
+bwup -s mynewlogin
+# add field
+echo -n myvalue | bwfla -s mynewlogin -f myfield
+# copy field
+bwfl -s mynewlogin -f myfield
+# rename field to `newvalue`
+echo -n newvalue | bwfle -s mynewlogin -f myfield -r
 ```
 
-Or to output the item id as well as the password you could use
-```
-bwpw() {
-  bw_unlock && bw_search -c occOc -s "$*"\
-  .id .name .login.username .login.password .notes
-}
-```
-This will return the item id and password in TSV format.
+### Search
 
-While `bwuse` and `bwne` accept interactive input using `vared`, `bwpwe` must
-have the password provided in standard input. An example of this would be `bwg
--ulns --length 20 | bwpwe SEARCH` which will generate a new random password for
-`SEARCH` and output the old password. Use of `bwg` is described in the [bw-cli
-manual](https://bitwarden.com/help/article/cli/#generate).
-
-For fun if `sshd` is running in Termux, then to store the latest SMS DUOSEC codes in `bw`
+```zsh
+bwtsv --simplify -s gmail -lc -c .name -c .username -o '.[] | .fields | length'
 ```
-bw-new-codes() {
-  local codes=$(ssh $DEVICE_IP -p 8022 "termux-sms-list | jq -r '.[]"\
-                    "| select(.number==\"DUOSEC\") | .body' | cut -d' ' -f3- "\
-                    "| tail -1")
-  bwnoe DUOSEC <<< "$codes"
-}
 
-bw-pop-duocode() {
-  bwno DUOSEC | awk '{$1=""; print $0}' | bwnoe DUOSEC | awk '{print $1}'
-}
+This command searches for "gmail" (`-s gmail`) and returns matching logins (`-l`). The use of `-c` along with argument `.name` causes the name of each item to be displayed in `fzf`. The use of `-o` along with `'.[] | .fields | length'` causes the number of fields to be displayed in `fzf` and also printed to output when selected. 
 
-bw-duocode() {
-  local code=$(bw-pop-duocode)
-  clipcopy <<< $code
-  echo "Copied code to clipboard"
-  if grep '^\W*5' <<< $code; then
-    echo -n "Last duosec code. Loading new codes in... "
-    sleep 1
-    echo -n "1... "
-    sleep 1
-    echo -n "2... "
-    sleep 1
-    echo -n "3 "
-    bw-new-codes
-  fi
-}
+| Character | Visible in fzf | Printed to output |
+|-----------|----------------|-------------------|
+| c         | yes            | no                |
+| o         | yes            | yes               |
+| O         | no             | yes               |
+
+```zsh
+local fieldname="email"
+local fieldpath=".fields[\"$fieldname\"][0]"
+bwtsv --simplify -ls wikipedia -c .name -c .username -h "$fieldname" -o "$fieldpath"
 ```
+By using the JQ path `$fieldpath` that selects the field named "email", this example lets you copy one of the emails associated with the search string `wikipedia`. Any item not containing this field will not be displayed.
+
+```zsh
+local fieldname="email"
+local fieldpath=".fields[\"$fieldname\"] | select(length > 0) | join(\", \")"
+bwtsv --simplify -pls wikipedia -c .name -c .username -h "$fieldname" -o "$fieldpath" | bw_tsv -h "$fieldname" -o '.'
+```
+
+Equivalent code but using piped bw_tsv to select from duplicates.
+
+### TSV Table
+
+```zsh
+bwtsv --simplify -tls wikipedia .name .username -h 'num fields' '.fields | keys | length'
+```
+
+When using `-t`, instead of fzf selection, `bwtsv` displays all results in a TSV table.
+
+### JQ search
+
+```
+bwtsv --simplify -o .password ---search-pass dog --search-user frog
+```
+
+This command finds items with both a username containing "frog" AND password containing "dog" and copies the password to clipboard.
+
+```
+bwtsv --simplify -o .password -j '(.password | test("dog")) or (.username | test("frog"))'
+```
+
+This command finds items with either a username containing "frog" OR password containing "dog" and copies the password to clipboard.
+
+`--search-name`, `{--search-user, -u}`, `--search-pass`, `--search-note` apply a filter to search items using case insensitive regex. `{-j,--search-jq}` allows a custom filter.
+
+`--simplify` restructuring the items for concise queries.
+- `.login.username` becomes `.username` 
+- `[.fields[] | select(.name == "email") | .value] | first` becomes `.fields.email[0]`
+
+### Default header names
+
+If you don't like the default header names displayed in fzf, then either edit `default-headers.csv` or export `BW_DEFAULT_HEADERS` to your file.
+
