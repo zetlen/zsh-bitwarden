@@ -413,6 +413,12 @@ bw_decrypt() {
   gpg --quiet --batch --yes --decrypt $@
 }
 
+# Sends the master password, read from stdin, to the server. It travels on
+# pipes only, because other accounts can read every process's arguments.
+_bw_send_unlock() {
+  jq -Rs '{password: .}' | bw_request_path --stdin -r POST /unlock .title >&2
+}
+
 bw_unlock_password() {
   if [ ! -f "$1" ]; then
     return 1
@@ -421,7 +427,7 @@ bw_unlock_password() {
   if ! pass=$(bw_decrypt "$1"); then
     return 1
   fi
-  jq -n --arg password "$pass" '{password: $password}' | bw_request_path --stdin -r POST /unlock .title >&2
+  printf "%s" "$pass" | _bw_send_unlock
 }
 
 bw_unlock() {
@@ -556,9 +562,9 @@ bw_list() {
   local items
   items=$(bw_list_cache) || return $?
   for (( i = 2; i <= ${#sarg[@]}; i+=2)); do
-    items=$(printf "%s" "$items" | jq -ceM --arg re "${sarg[$i]}" "[.[] | select(
+    items=$(printf "%s" "$items" | BW_JQ_VALUE="${sarg[$i]}" jq -ceM "[.[] | select(
    reduce [ .id, .name, .notes, .login.username, .login.password, (.fields[]?.value) ][] as \$field
-  (false; . or (\$field // \"\" | test(\$re;\"i\")))
+  (false; . or (\$field // \"\" | test(\$ENV.BW_JQ_VALUE;\"i\")))
     )]") || return $?
   done
   for (( i = 1; i <= ${#sxarg[@]}; i+=2)); do
@@ -577,7 +583,7 @@ bw_list() {
         jqpath=".notes"
         ;;
     esac
-    items=$(printf "%s" "$items" | jq -ceM --arg re "${sxarg[(( $i + 1 ))]}" "[.[] | select($jqpath | test(\$re;\"i\")?)]") || return $?
+    items=$(printf "%s" "$items" | BW_JQ_VALUE="${sxarg[(( $i + 1 ))]}" jq -ceM "[.[] | select($jqpath | test(\$ENV.BW_JQ_VALUE;\"i\")?)]") || return $?
   done
   if (( ${#larg[@]} || ${#narg[@]})); then
     local item_type
@@ -781,15 +787,19 @@ bw_edit_item() {
   jq -ceM "$2" | bw_request --stdin PUT "/object/item/$1"
 }
 
+# The value goes to jq through the environment rather than its arguments,
+# because other accounts can read every process's arguments.
 bw_edit_item_assign() {
 
-  bw_edit_item "$1" "$2 = $(_bw_jq_str "$3")"
+  BW_JQ_VALUE="$3" bw_edit_item "$1" "$2 = \$ENV.BW_JQ_VALUE"
 
 }
 
+# Takes the element as JSON, through the environment for the same reason as
+# bw_edit_item_assign.
 bw_edit_item_append() {
 
-  bw_edit_item "$1" "$2 += [$3]"
+  BW_JQ_VALUE="$3" bw_edit_item "$1" "$2 += [\$ENV.BW_JQ_VALUE | fromjson]"
 
 }
 
@@ -860,7 +870,7 @@ bw_edit_field() {
     fi
   fi
 
-  printf "%s" "$item" | jq -ceM --arg name "$name" --arg val "$val" '.fields[$name] += [$val]' | bw_unsimplify | bw_edit_json
+  printf "%s" "$item" | BW_JQ_VALUE="$val" jq -ceM --arg name "$name" '.fields[$name] += [$ENV.BW_JQ_VALUE]' | bw_unsimplify | bw_edit_json
 
   _bw_pipefail ${pipestatus[@]}
 
@@ -893,7 +903,7 @@ bw_add_field() {
   else
     val=$(</dev/stdin)
   fi
-  local field_json=$(jq -cn --arg name "$name" --arg value "$val" '{name: $name, value: $value, type: 0, linkedId: null}')
+  local field_json=$(BW_JQ_VALUE="$val" jq -cn --arg name "$name" '{name: $name, value: $ENV.BW_JQ_VALUE, type: 0, linkedId: null}')
   printf "%s" "$item" | bw_edit_item_append "$uuid" ".fields" "$field_json"
 }
 
@@ -1026,8 +1036,8 @@ bw_create_login() {
     pass="$(</dev/stdin)"
   fi
   bw_template \
-      | jq -ceM --arg name "$name" --arg username "$username" --arg pass "$pass" \
-           '.name = $name | .notes = null | .login.username = $username | .login.password = $pass' \
+      | BW_JQ_VALUE="$pass" jq -ceM --arg name "$name" --arg username "$username" \
+           '.name = $name | .notes = null | .login.username = $username | .login.password = $ENV.BW_JQ_VALUE' \
       | bw_request --stdin POST "/object/item" | jq -rceM '.login.password'
   _bw_pipefail ${pipestatus[@]}
 }
@@ -1052,8 +1062,8 @@ bw_create_note() {
     val=$(</dev/stdin)
   fi
   uuid=$(bw_template \
-             | jq --arg name "$name" --arg notes "$val" \
-                  '.name = $name | .notes = $notes | .type = 2 | .secureNote.type = 0' \
+             | BW_JQ_VALUE="$val" jq --arg name "$name" \
+                  '.name = $name | .notes = $ENV.BW_JQ_VALUE | .type = 2 | .secureNote.type = 0' \
              | bw_request --stdin POST /object/item | jq -r '.id'; _bw_pipefail ${pipestatus[@]})
 }
 
