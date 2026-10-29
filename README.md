@@ -42,8 +42,9 @@ See [INSTALL.md](INSTALL.md).
 
 ## Unlocking
 
-The plugin talks to `bw serve` on `localhost:$BW_SERVE_PORT` (default 8087) and starts it when it is not running.
-The server answers any local process without authentication, so it stops after `$BW_SERVE_LIFETIME` seconds (default 1800) or when you run `bwlk`.
+The plugin talks to `bw serve` on `127.0.0.1:$BW_SERVE_PORT` (default 8087) and starts it when it is not running.
+The server answers any local process without authentication, including other users' processes, so it stops after `$BW_SERVE_LIFETIME` seconds (default 1800) or when you run `bwlk`.
+The plugin sends nothing to the port unless the server listening there belongs to you.
 
 The first unlock asks for your master password and stores it encrypted to your GPG key in `$BW_PASS_FILE` (default `~/.config/zsh-bitwarden/pass.gpg`).
 Later unlocks decrypt that file, so gpg-agent decides how often you are asked for a passphrase.

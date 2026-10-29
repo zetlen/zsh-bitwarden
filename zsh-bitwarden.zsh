@@ -323,7 +323,12 @@ bw_request() {
 
   local serve_port=${BW_SERVE_PORT:-8087}
 
-  res=$(curl -sX "$method" "http://localhost:${serve_port}$endpoint$params" -H 'accept: application/json' -H 'Content-Type: application/json' "${data_args[@]}") || return $?
+  if ! _bw_port_is_mine $serve_port; then
+    echo "Refusing to talk to port $serve_port: the server listening there belongs to another user, or nothing is listening." >&2
+    return 1
+  fi
+
+  res=$(curl -sX "$method" "http://127.0.0.1:${serve_port}$endpoint$params" -H 'accept: application/json' -H 'Content-Type: application/json' "${data_args[@]}") || return $?
 
   if ! printf "%s" "$res" | jq empty > /dev/null 2>&1; then
     printf "%s\n" "$res" >&2
@@ -380,16 +385,36 @@ bw_wait_port() {
   local port limit
   port=$1
   limit=$2
-  while ! curl -s -o /dev/null localhost:$port && [[ $limit -ne 0 ]]; do
+  # Polling the port with curl would hang on a service that accepts the
+  # connection but never answers HTTP, so this waits for a listener of ours.
+  while ! _bw_port_is_mine $port && [[ $limit -ne 0 ]]; do
         sleep 1
         limit=$((limit-1))
   done
 }
 
+# Succeeds when every listener that accepts connections to 127.0.0.1 on port $1
+# belongs to this user, and there is at least one. Requests carry the master
+# password and item secrets, so they must not reach a server that another
+# account started on the port. Linux reports listener owners in /proc/net/tcp;
+# elsewhere lsof shows this user's sockets, and another user's listener would
+# have kept this user's server from binding the port at all.
+_bw_port_is_mine() {
+  local -a owners
+  if [[ -r /proc/net/tcp ]]; then
+    owners=($(awk -v port=$(printf '%04X' $1) '
+      $4 == "0A" && ($2 == "0100007F:" port || $2 == "00000000:" port) { print $8 }
+    ' /proc/net/tcp))
+  else
+    owners=($(lsof -nP -iTCP:$1 -sTCP:LISTEN -Fu 2> /dev/null | sed -n 's/^u//p'))
+  fi
+  (( ${#owners} )) && [[ -z "${owners:#$UID}" ]]
+}
+
 bw_serve() {
   local serve_port=${BW_SERVE_PORT:-8087}
-  if ! pgrep -f '(^|/)bw serve' > /dev/null 2>&1; then
-    bw serve --port ${serve_port} > /dev/null 2> /dev/null &!
+  if ! pgrep -u $UID -f '(^|/)bw serve' > /dev/null 2>&1; then
+    bw serve --hostname 127.0.0.1 --port ${serve_port} > /dev/null 2> /dev/null &!
     # An unlocked server holds about 190 MB and answers any local process without
     # authentication, so it gets a fixed lifetime. The timer must not hold the
     # caller's output open, or a $(...) that started the server waits it out.
@@ -433,6 +458,12 @@ bw_unlock_password() {
 bw_unlock() {
   bw_serve
 
+  local serve_port=${BW_SERVE_PORT:-8087}
+  if ! _bw_port_is_mine $serve_port; then
+    echo "Not unlocking: the server on port $serve_port belongs to another user, or did not start." >&2
+    return 1
+  fi
+
   local st
   if st=$(bw_status) 2> /dev/null; then
     return
@@ -459,7 +490,7 @@ bw_unlock() {
 
 bw_lock() {
   # The server keeps the vault key only in memory, so stopping it locks the vault.
-  pkill -f '(^|/)bw serve'
+  pkill -u $UID -f '(^|/)bw serve'
   echo "Your vault is locked."
 }
 
