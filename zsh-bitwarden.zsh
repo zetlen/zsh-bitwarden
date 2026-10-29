@@ -323,7 +323,12 @@ bw_request() {
 
   local serve_port=${BW_SERVE_PORT:-8087}
 
-  res=$(curl -sX "$method" "http://localhost:${serve_port}$endpoint$params" -H 'accept: application/json' -H 'Content-Type: application/json' "${data_args[@]}") || return $?
+  if ! _bw_port_is_mine $serve_port; then
+    echo "Refusing to talk to port $serve_port: the server listening there belongs to another user, or nothing is listening." >&2
+    return 1
+  fi
+
+  res=$(curl -sX "$method" "http://127.0.0.1:${serve_port}$endpoint$params" -H 'accept: application/json' -H 'Content-Type: application/json' "${data_args[@]}") || return $?
 
   if ! printf "%s" "$res" | jq empty > /dev/null 2>&1; then
     printf "%s\n" "$res" >&2
@@ -380,16 +385,36 @@ bw_wait_port() {
   local port limit
   port=$1
   limit=$2
-  while ! curl -s -o /dev/null localhost:$port && [[ $limit -ne 0 ]]; do
+  # Polling the port with curl would hang on a service that accepts the
+  # connection but never answers HTTP, so this waits for a listener of ours.
+  while ! _bw_port_is_mine $port && [[ $limit -ne 0 ]]; do
         sleep 1
         limit=$((limit-1))
   done
 }
 
+# Succeeds when every listener that accepts connections to 127.0.0.1 on port $1
+# belongs to this user, and there is at least one. Requests carry the master
+# password and item secrets, so they must not reach a server that another
+# account started on the port. Linux reports listener owners in /proc/net/tcp;
+# elsewhere lsof shows this user's sockets, and another user's listener would
+# have kept this user's server from binding the port at all.
+_bw_port_is_mine() {
+  local -a owners
+  if [[ -r /proc/net/tcp ]]; then
+    owners=($(awk -v port=$(printf '%04X' $1) '
+      $4 == "0A" && ($2 == "0100007F:" port || $2 == "00000000:" port) { print $8 }
+    ' /proc/net/tcp))
+  else
+    owners=($(lsof -nP -iTCP:$1 -sTCP:LISTEN -Fu 2> /dev/null | sed -n 's/^u//p'))
+  fi
+  (( ${#owners} )) && [[ -z "${owners:#$UID}" ]]
+}
+
 bw_serve() {
   local serve_port=${BW_SERVE_PORT:-8087}
-  if ! pgrep -f '(^|/)bw serve' > /dev/null 2>&1; then
-    bw serve --port ${serve_port} > /dev/null 2> /dev/null &!
+  if ! pgrep -u $UID -f '(^|/)bw serve' > /dev/null 2>&1; then
+    bw serve --hostname 127.0.0.1 --port ${serve_port} > /dev/null 2> /dev/null &!
     # An unlocked server holds about 190 MB and answers any local process without
     # authentication, so it gets a fixed lifetime. The timer must not hold the
     # caller's output open, or a $(...) that started the server waits it out.
@@ -413,6 +438,12 @@ bw_decrypt() {
   gpg --quiet --batch --yes --decrypt $@
 }
 
+# Sends the master password, read from stdin, to the server. It travels on
+# pipes only, because other accounts can read every process's arguments.
+_bw_send_unlock() {
+  jq -Rs '{password: .}' | bw_request_path --stdin -r POST /unlock .title >&2
+}
+
 bw_unlock_password() {
   if [ ! -f "$1" ]; then
     return 1
@@ -421,39 +452,47 @@ bw_unlock_password() {
   if ! pass=$(bw_decrypt "$1"); then
     return 1
   fi
-  jq -n --arg password "$pass" '{password: $password}' | bw_request_path --stdin -r POST /unlock .title >&2
+  printf "%s" "$pass" | _bw_send_unlock
 }
 
 bw_unlock() {
   bw_serve
+
+  local serve_port=${BW_SERVE_PORT:-8087}
+  if ! _bw_port_is_mine $serve_port; then
+    echo "Not unlocking: the server on port $serve_port belongs to another user, or did not start." >&2
+    return 1
+  fi
 
   local st
   if st=$(bw_status) 2> /dev/null; then
     return
   fi
 
+  # The master password is kept, encrypted to your GPG key, only when
+  # BW_STORE_PASSWORD is set, because while gpg-agent caches the key's
+  # passphrase any process running as you can decrypt it.
+  local gpg_file=${BW_PASS_FILE:-~/.config/zsh-bitwarden/pass.gpg}
+  if [[ -n "$BW_STORE_PASSWORD" ]] && bw_unlock_password "$gpg_file"; then
+    return
+  fi
+
   local pass
-  local gpg_file
-
-  gpg_file=${BW_PASS_FILE:-~/.config/zsh-bitwarden/pass.gpg}
-  mkdir -p $(dirname $gpg_file)
-
-  while ! bw_unlock_password $gpg_file; do
+  while true; do
     echo -n "Enter your master password: " >&2
-    if ! read -s pass; then
-      return 1
-    fi
+    read -s pass || return 1
     echo >&2
-    if ! printf "%s" "$pass" | bw_encrypt ${gpg_file}; then
-      return 1
+    if [[ -n "$BW_STORE_PASSWORD" ]]; then
+      mkdir -p "${gpg_file:h}"
+      printf "%s" "$pass" | bw_encrypt "$gpg_file" || return 1
     fi
+    printf "%s" "$pass" | _bw_send_unlock && return
   done
-
 }
 
 bw_lock() {
   # The server keeps the vault key only in memory, so stopping it locks the vault.
-  pkill -f '(^|/)bw serve'
+  pkill -u $UID -f '(^|/)bw serve'
   echo "Your vault is locked."
 }
 
@@ -556,9 +595,9 @@ bw_list() {
   local items
   items=$(bw_list_cache) || return $?
   for (( i = 2; i <= ${#sarg[@]}; i+=2)); do
-    items=$(printf "%s" "$items" | jq -ceM --arg re "${sarg[$i]}" "[.[] | select(
+    items=$(printf "%s" "$items" | BW_JQ_VALUE="${sarg[$i]}" jq -ceM "[.[] | select(
    reduce [ .id, .name, .notes, .login.username, .login.password, (.fields[]?.value) ][] as \$field
-  (false; . or (\$field // \"\" | test(\$re;\"i\")))
+  (false; . or (\$field // \"\" | test(\$ENV.BW_JQ_VALUE;\"i\")))
     )]") || return $?
   done
   for (( i = 1; i <= ${#sxarg[@]}; i+=2)); do
@@ -577,7 +616,7 @@ bw_list() {
         jqpath=".notes"
         ;;
     esac
-    items=$(printf "%s" "$items" | jq -ceM --arg re "${sxarg[(( $i + 1 ))]}" "[.[] | select($jqpath | test(\$re;\"i\")?)]") || return $?
+    items=$(printf "%s" "$items" | BW_JQ_VALUE="${sxarg[(( $i + 1 ))]}" jq -ceM "[.[] | select($jqpath | test(\$ENV.BW_JQ_VALUE;\"i\")?)]") || return $?
   done
   if (( ${#larg[@]} || ${#narg[@]})); then
     local item_type
@@ -781,15 +820,19 @@ bw_edit_item() {
   jq -ceM "$2" | bw_request --stdin PUT "/object/item/$1"
 }
 
+# The value goes to jq through the environment rather than its arguments,
+# because other accounts can read every process's arguments.
 bw_edit_item_assign() {
 
-  bw_edit_item "$1" "$2 = $(_bw_jq_str "$3")"
+  BW_JQ_VALUE="$3" bw_edit_item "$1" "$2 = \$ENV.BW_JQ_VALUE"
 
 }
 
+# Takes the element as JSON, through the environment for the same reason as
+# bw_edit_item_assign.
 bw_edit_item_append() {
 
-  bw_edit_item "$1" "$2 += [$3]"
+  BW_JQ_VALUE="$3" bw_edit_item "$1" "$2 += [\$ENV.BW_JQ_VALUE | fromjson]"
 
 }
 
@@ -860,7 +903,7 @@ bw_edit_field() {
     fi
   fi
 
-  printf "%s" "$item" | jq -ceM --arg name "$name" --arg val "$val" '.fields[$name] += [$val]' | bw_unsimplify | bw_edit_json
+  printf "%s" "$item" | BW_JQ_VALUE="$val" jq -ceM --arg name "$name" '.fields[$name] += [$ENV.BW_JQ_VALUE]' | bw_unsimplify | bw_edit_json
 
   _bw_pipefail ${pipestatus[@]}
 
@@ -893,7 +936,7 @@ bw_add_field() {
   else
     val=$(</dev/stdin)
   fi
-  local field_json=$(jq -cn --arg name "$name" --arg value "$val" '{name: $name, value: $value, type: 0, linkedId: null}')
+  local field_json=$(BW_JQ_VALUE="$val" jq -cn --arg name "$name" '{name: $name, value: $ENV.BW_JQ_VALUE, type: 0, linkedId: null}')
   printf "%s" "$item" | bw_edit_item_append "$uuid" ".fields" "$field_json"
 }
 
@@ -1026,8 +1069,8 @@ bw_create_login() {
     pass="$(</dev/stdin)"
   fi
   bw_template \
-      | jq -ceM --arg name "$name" --arg username "$username" --arg pass "$pass" \
-           '.name = $name | .notes = null | .login.username = $username | .login.password = $pass' \
+      | BW_JQ_VALUE="$pass" jq -ceM --arg name "$name" --arg username "$username" \
+           '.name = $name | .notes = null | .login.username = $username | .login.password = $ENV.BW_JQ_VALUE' \
       | bw_request --stdin POST "/object/item" | jq -rceM '.login.password'
   _bw_pipefail ${pipestatus[@]}
 }
@@ -1052,8 +1095,8 @@ bw_create_note() {
     val=$(</dev/stdin)
   fi
   uuid=$(bw_template \
-             | jq --arg name "$name" --arg notes "$val" \
-                  '.name = $name | .notes = $notes | .type = 2 | .secureNote.type = 0' \
+             | BW_JQ_VALUE="$val" jq --arg name "$name" \
+                  '.name = $name | .notes = $ENV.BW_JQ_VALUE | .type = 2 | .secureNote.type = 0' \
              | bw_request --stdin POST /object/item | jq -r '.id'; _bw_pipefail ${pipestatus[@]})
 }
 
