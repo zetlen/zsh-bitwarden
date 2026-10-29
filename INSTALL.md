@@ -11,7 +11,7 @@ The following should be installed and on your PATH
 
 4. [curl](https://curl.se) for talking to `bw serve`
 
-5. [gpg](https://gnupg.org) with a key of your own, for storing the master password
+5. [gpg](https://gnupg.org) with a key of your own, if you set `BW_STORE_PASSWORD`
 
 These are needed only by the commands that use them:
 

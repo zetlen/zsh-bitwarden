@@ -469,23 +469,25 @@ bw_unlock() {
     return
   fi
 
+  # The master password is kept, encrypted to your GPG key, only when
+  # BW_STORE_PASSWORD is set, because while gpg-agent caches the key's
+  # passphrase any process running as you can decrypt it.
+  local gpg_file=${BW_PASS_FILE:-~/.config/zsh-bitwarden/pass.gpg}
+  if [[ -n "$BW_STORE_PASSWORD" ]] && bw_unlock_password "$gpg_file"; then
+    return
+  fi
+
   local pass
-  local gpg_file
-
-  gpg_file=${BW_PASS_FILE:-~/.config/zsh-bitwarden/pass.gpg}
-  mkdir -p $(dirname $gpg_file)
-
-  while ! bw_unlock_password $gpg_file; do
+  while true; do
     echo -n "Enter your master password: " >&2
-    if ! read -s pass; then
-      return 1
-    fi
+    read -s pass || return 1
     echo >&2
-    if ! printf "%s" "$pass" | bw_encrypt ${gpg_file}; then
-      return 1
+    if [[ -n "$BW_STORE_PASSWORD" ]]; then
+      mkdir -p "${gpg_file:h}"
+      printf "%s" "$pass" | bw_encrypt "$gpg_file" || return 1
     fi
+    printf "%s" "$pass" | _bw_send_unlock && return
   done
-
 }
 
 bw_lock() {
